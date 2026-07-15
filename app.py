@@ -31,6 +31,98 @@ app.secret_key = os.environ.get("SECRET_KEY", "aries-ai-cok-gizli-anahtar-2026")
 MAINTENANCE_MODE = False
 MAINTENANCE_MESSAGE = "Şu an bakım arasındayız."
 
+# 💾 KALICI BAKIM DURUMU (EKLENTİ) — Render gibi platformlarda sunucu belli
+# süre istek almayınca uykuya dalıp sonra sıfırdan yeniden başlayabilir; bu
+# durumda bellekteki MAINTENANCE_MODE değişkeni sıfırlanır. Bunu önlemek için
+# durumu küçük bir dosyaya da yazıyoruz ve başlangıçta oradan okuyoruz.
+MAINTENANCE_FILE = "maintenance.flag"
+
+
+def _load_maintenance_state():
+    return os.path.exists(MAINTENANCE_FILE)
+
+
+def _save_maintenance_state(is_on):
+    if is_on:
+        with open(MAINTENANCE_FILE, "w", encoding="utf-8") as f:
+            f.write("1")
+    else:
+        if os.path.exists(MAINTENANCE_FILE):
+            os.remove(MAINTENANCE_FILE)
+
+
+# --------------------------------------------------------------------------
+# 🔒 GERÇEKTEN KALICI BAKIM DURUMU — RENDER ORTAM DEĞİŞKENİ (EKLENTİ)
+# --------------------------------------------------------------------------
+# Yerel dosya (maintenance.flag), Render'ın container'ı tamamen sıfırdan
+# yeniden başlattığı durumlarda (deploy, çökme, platform bakımı vb.) silinip
+# gidebilir. Bunu %100 garantiye almak için durumu Render'ın KENDİ ortam
+# değişkeni sisteminde de tutuyoruz — çünkü ortam değişkenleri container ne
+# kadar sıfırdan açılırsa açılsın HER ZAMAN aynı kalır, sadece biz (veya sen)
+# değiştirene kadar.
+#
+# NASIL ÇALIŞIR: 'maintenance'/'resume' action'ı tetiklendiğinde, Render'ın
+# API'sine bir istek atıp ARIES_MAINTENANCE ortam değişkenini "1" veya "0"
+# yapıyoruz. Render bu değişikliği fark edince otomatik olarak servisi kısa
+# bir süreliğine (1-2 dakika) yeniden başlatıyor — bu normal ve beklenen bir
+# davranıştır, endişelenme.
+#
+# KURULUM (senin yapman gereken):
+#   1) https://dashboard.render.com/u/settings#api-keys adresinden yeni bir
+#      API anahtarı oluştur ("Create API Key").
+#   2) Render'da bu servisin "Environment" sekmesine gidip RENDER_API_KEY
+#      adında yeni bir ortam değişkeni ekle, değerine o anahtarı yapıştır.
+#   3) Aşağıdaki anahtar boşsa (RENDER_API_KEY yoksa) hiçbir şey bozulmaz;
+#      sistem sessizce sadece yerel dosya yöntemine (maintenance.flag) döner.
+RENDER_API_KEY = os.environ.get("RENDER_API_KEY", "rnd_ZTS8MST06j6znv8CRuhINZPbcFzJ")
+RENDER_SERVICE_ID = os.environ.get("RENDER_SERVICE_ID", "srv-d8pfgaj7uimc73a5i2eg")
+ARIES_MAINTENANCE_ENV_KEY = "ARIES_MAINTENANCE"
+
+
+def _set_render_env_maintenance(is_on):
+    """Render API üzerinden ARIES_MAINTENANCE ortam değişkenini günceller.
+    RENDER_API_KEY tanımlı değilse sessizce hiçbir şey yapmaz (hata vermez)."""
+    if not RENDER_API_KEY:
+        return False
+    try:
+        url = f"https://api.render.com/v1/services/{RENDER_SERVICE_ID}/env-vars/{ARIES_MAINTENANCE_ENV_KEY}"
+        resp = requests.put(
+            url,
+            headers={
+                "Authorization": f"Bearer {RENDER_API_KEY}",
+                "Content-Type": "application/json",
+            },
+            json={"value": "1" if is_on else "0"},
+            timeout=10,
+        )
+        return resp.status_code < 300
+    except Exception:
+        return False
+
+
+# Başlangıçta önce Render ortam değişkenine bak (en güvenilir kaynak),
+# yoksa yerel dosyaya, o da yoksa varsayılan olarak kapalı (False) kabul et.
+_env_maintenance = os.environ.get(ARIES_MAINTENANCE_ENV_KEY, "")
+if _env_maintenance in ("1", "true", "True"):
+    MAINTENANCE_MODE = True
+elif _env_maintenance in ("0", "false", "False"):
+    MAINTENANCE_MODE = False
+else:
+    MAINTENANCE_MODE = _load_maintenance_state()
+
+
+# 🌐 GENEL CORS DESTEĞİ (EKLENTİ) — panel farklı bir adresten (origin) barındırılıyorsa
+# tarayıcı istekleri CORS koruması yüzünden engelleyebilir. Bu kural, hangi
+# endpoint'ten dönerse dönsün her cevaba otomatik olarak izin başlığı ekler,
+# böylece /ask içindeki onlarca farklı cevap noktasının her birini tek tek
+# değiştirmeye gerek kalmaz.
+@app.after_request
+def add_cors_headers(response):
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type"
+    return response
+
 # --------------------------------------------------------------------------
 # 🤖 GELİŞMİŞ YAPAY ZEKA DESTEĞİ (OPSİYONEL — "daha akıllı" cevaplar için)
 # --------------------------------------------------------------------------
@@ -721,6 +813,31 @@ def translate_html_preserving_tags(html_text, target_lang):
         return html_text
 
 
+# 🇷🇺➡️🇹🇷 LOG EKRANI İÇİN OTOMATİK ÇEVİRİ (EKLENTİ)
+# Panelde loglara bakarken Rusça (Kiril alfabeli) bir soru görürsen anlaman
+# için, log satırının sonuna otomatik olarak Türkçe çevirisini ekliyoruz.
+CYRILLIC_PATTERN = re.compile(r'[\u0400-\u04FF]')
+
+
+def add_turkish_translation_to_log_line(log_line):
+    """Log satırında Kiril alfabesi (Rusça) tespit edilirse, satırın sonuna
+    '(TR: ...)' şeklinde Türkçe çevirisini ekler. Türkçe/başka dil ise veya
+    çeviri motoru yoksa/başarısız olursa satırı olduğu gibi bırakır."""
+    if not CYRILLIC_PATTERN.search(log_line):
+        return log_line
+    if not TRANSLATOR_AVAILABLE:
+        return log_line
+    try:
+        # Log satırı "... -> Soru: <mesaj>" formatında; sadece soru kısmını çeviriyoruz
+        if "-> Soru: " in log_line:
+            prefix, question_part = log_line.split("-> Soru: ", 1)
+            translated = GoogleTranslator(source='ru', target='tr').translate(question_part)
+            return f"{prefix}-> Soru: {question_part} (TR: {translated})"
+        return log_line
+    except Exception:
+        return log_line
+
+
 def build_reply(text):
     """Kullanıcı 'do you speak english/russian' dediyse, o dil modu session'da
     kayıtlıdır; bu fonksiyon her cevabı otomatik olarak o dile çevirip döner."""
@@ -844,11 +961,15 @@ def get_logs():
     # 🛠️ BAKIM MODU action'ları (EKLENTİ)
     if action == 'maintenance':
         MAINTENANCE_MODE = True
-        return jsonify({"success": True, "maintenance": True}), 200, response_headers
+        _save_maintenance_state(True)
+        render_synced = _set_render_env_maintenance(True)
+        return jsonify({"success": True, "maintenance": True, "render_synced": render_synced}), 200, response_headers
 
     if action == 'resume':
         MAINTENANCE_MODE = False
-        return jsonify({"success": True, "maintenance": False}), 200, response_headers
+        _save_maintenance_state(False)
+        render_synced = _set_render_env_maintenance(False)
+        return jsonify({"success": True, "maintenance": False, "render_synced": render_synced}), 200, response_headers
 
     if action == 'status':
         return jsonify({"success": True, "maintenance": MAINTENANCE_MODE}), 200, response_headers
@@ -857,12 +978,25 @@ def get_logs():
         with open("sorular.txt", "r", encoding="utf-8") as file:
             logs = file.readlines()
         clean_logs = [line.strip() for line in logs if line.strip()]
+        # 🇷🇺➡️🇹🇷 Rusça (Kiril) log satırlarına otomatik Türkçe çeviri ekle (EKLENTİ)
+        clean_logs = [add_turkish_translation_to_log_line(line) for line in clean_logs]
         return jsonify({"success": True, "logs": list(reversed(clean_logs)) if clean_logs else ["Henüz hiç soru sorulmadı."]}), 200, response_headers
     return jsonify({"success": True, "logs": ["Henüz hiç soru sorulmadı."]}), 200, response_headers
 
 
-@app.route('/ask', methods=['POST'])
+@app.route('/ask', methods=['POST', 'OPTIONS'])
 def ask():
+    # 🌐 CORS DESTEĞİ (EKLENTİ) — panel farklı bir adresten (origin) barındırılıyorsa
+    # tarayıcı bu isteği CORS koruması yüzünden engelleyebilir. get-logs
+    # endpoint'indeki gibi izin başlıklarını burada da ekliyoruz.
+    cors_headers = {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type"
+    }
+    if request.method == 'OPTIONS':
+        return jsonify({"success": True}), 200, cors_headers
+
     # 🧪 ADMİN TEST BYPASS (EKLENTİ) — bakım modundayken bile, panel üzerinden
     # doğru şifre ("4235") ile gönderilen istekler gerçek motoru çalıştırır.
     # Böylece bakım sırasında geliştirmeleri canlıda test edebilirsin;
@@ -874,7 +1008,7 @@ def ask():
     # log bile tutulmadan direkt sabit mesaj döner. ARIES bu sırada tamamen durmuş sayılır.
     # (Admin test bypass'ı hariç.)
     if MAINTENANCE_MODE and not is_admin_test:
-        return jsonify({"reply": MAINTENANCE_MESSAGE, "maintenance": True})
+        return jsonify({"reply": MAINTENANCE_MESSAGE, "maintenance": True}), 200, cors_headers
 
     user_message = request.json.get("message", "").lower().strip()
     raw_message = request.json.get("message", "").strip()
