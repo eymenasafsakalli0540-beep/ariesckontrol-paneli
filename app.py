@@ -74,7 +74,7 @@ def _save_maintenance_state(is_on):
 #      adında yeni bir ortam değişkeni ekle, değerine o anahtarı yapıştır.
 #   3) Aşağıdaki anahtar boşsa (RENDER_API_KEY yoksa) hiçbir şey bozulmaz;
 #      sistem sessizce sadece yerel dosya yöntemine (maintenance.flag) döner.
-RENDER_API_KEY = os.environ.get("RENDER_API_KEY", "rnd_ZTS8MST06j6znv8CRuhINZPbcFzJ")
+RENDER_API_KEY = os.environ.get("RENDER_API_KEY", "")
 RENDER_SERVICE_ID = os.environ.get("RENDER_SERVICE_ID", "srv-d8pfgaj7uimc73a5i2eg")
 ARIES_MAINTENANCE_ENV_KEY = "ARIES_MAINTENANCE"
 
