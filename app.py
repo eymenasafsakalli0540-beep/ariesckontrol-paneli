@@ -998,7 +998,7 @@ def ask():
         return jsonify({"success": True}), 200, cors_headers
 
     # 🧪 ADMİN TEST BYPASS (EKLENTİ) — bakım modundayken bile, panel üzerinden
-    # doğru şifre ("4235") ile gönderilen istekler gerçek motoru çalıştırır.
+    # doğru şifre ("4253") ile gönderilen istekler gerçek motoru çalıştırır.
     # Böylece bakım sırasında geliştirmeleri canlıda test edebilirsin;
     # şifresiz/normal kullanıcı istekleri bakım mesajını almaya devam eder.
     is_admin_test = request.json.get("admin_password") == "4253"
