@@ -950,7 +950,7 @@ def get_logs():
     password = data.get('password', '')
     action = data.get('action', 'get')
 
-    if password != "4253":
+    if password != "4275":
         return jsonify({"success": False, "message": "Hatalı şifre!"}), 403, response_headers
 
     if action == 'clear':
@@ -1001,7 +1001,7 @@ def ask():
     # doğru şifre ("4253") ile gönderilen istekler gerçek motoru çalıştırır.
     # Böylece bakım sırasında geliştirmeleri canlıda test edebilirsin;
     # şifresiz/normal kullanıcı istekleri bakım mesajını almaya devam eder.
-    is_admin_test = request.json.get("admin_password") == "4253"
+    is_admin_test = request.json.get("admin_password") == "4275"
 
     # 🛠️ BAKIM MODU KONTROLÜ (EKLENTİ) — MAINTENANCE_MODE açıkken hiçbir motor
     # (çeviri, matematik, coğrafya, tarih, fen, AI fallback vb.) çalıştırılmaz;
