@@ -56,6 +56,24 @@
         .ban-actions { display: flex; flex-direction: column; gap: 4px; min-width: 110px; }
         .ban-actions .btn { border-radius: 50px; font-size: 12px; padding: 4px 10px; }
         .badge-banned { background: #ff5252; color: #fff; border-radius: 50px; padding: 2px 8px; font-size: 10px; margin-left: 6px; }
+
+        /* 📋 Log listesindeki her soru satırı — buton sorunun HEMEN sağında, boşluksuz */
+        .log-row {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 0;
+            border-bottom: 1px solid #1a1a1a;
+        }
+        .log-row .log-text { flex: 0 1 auto; }
+        .log-row .btn-banla {
+            flex: 0 0 auto;
+            border-radius: 50px;
+            font-size: 11px;
+            padding: 2px 10px;
+            white-space: nowrap;
+        }
     </style>
 </head>
 <body>
@@ -172,16 +190,16 @@
         });
     }
 
-    // 🚫 Log satırını ayrıştırıp sağına "Banla" butonu ekleyen satır oluşturucu (EKLENTİ)
+    // 🚫 Log satırını ayrıştırıp sorunun HEMEN sağına "Banla" butonu ekleyen satır oluşturucu (EKLENTİ)
     // Log formatı: [zaman] IP: x.x.x.x | CIHAZ: deviceid | DURUM: durum -> Soru: soru metni
     const LOG_LINE_REGEX = /IP:\s*(\S+)\s*\|\s*CIHAZ:\s*(\S*)\s*\|/;
 
     function renderLogLine(line, container) {
         const row = document.createElement('div');
-        row.className = 'ban-row';
+        row.className = 'log-row';
 
         const textSpan = document.createElement('span');
-        textSpan.className = 'info';
+        textSpan.className = 'log-text';
         textSpan.innerHTML = line;
         row.appendChild(textSpan);
 
@@ -191,8 +209,7 @@
             const device = match[2] || '';
 
             const btn = document.createElement('button');
-            btn.className = 'btn btn-danger';
-            btn.style.cssText = 'border-radius:50px; font-size:12px; padding:4px 12px; white-space:nowrap; margin-left:10px;';
+            btn.className = 'btn btn-danger btn-banla';
             btn.innerText = 'Banla';
             btn.onclick = () => quickBan(device ? 'device' : 'ip', device || ip);
             row.appendChild(btn);
