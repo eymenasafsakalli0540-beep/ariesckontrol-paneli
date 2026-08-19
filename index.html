@@ -7,18 +7,15 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
         body { background-color: #050505; color: #ffffff; font-family: 'Courier New', Courier, monospace; padding: 20px; }
-        /* Mobil uyumlu login kutusu */
         .login-box { max-width: 400px; width: 100%; margin: 80px auto; background: #111; padding: 25px; border-radius: 20px; border: 1px solid #333; text-align: center; }
         .dashboard { display: none; }
         .panel-title { font-size: 22px; font-weight: bold; border-bottom: 2px solid #222; padding-bottom: 10px; margin-bottom: 20px; }
-        /* Tablet ve PC için başlık boyutunu büyütelim */
         @media (min-width: 768px) {
             body { padding: 30px; }
             .panel-title { font-size: 26px; }
         }
         .neon-text { color: #00ffff; text-shadow: 0 0 5px #00ffff; }
 
-        /* Butonlar tamamen yuvarlak (pill) stil */
         .btn-custom {
             font-weight: bold;
             padding: 12px 24px;
@@ -34,7 +31,6 @@
 
         .log-display { background-color: #111111; border: 1px solid #222; border-left: 5px solid #ffeb3b; padding: 15px; border-radius: 12px; min-height: 100px; color: #e0e0e0; font-size: 15px; word-wrap: break-word; }
 
-        /* Bakım modu göstergesi */
         .maintenance-banner {
             display: none;
             background: #3a2a00;
@@ -46,6 +42,20 @@
             font-weight: bold;
             margin-bottom: 15px;
         }
+
+        /* 🚫 Kara liste paneli */
+        .ban-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 10px;
+            border-bottom: 1px solid #222;
+            padding: 8px 0;
+        }
+        .ban-row .info { flex: 1; word-break: break-word; }
+        .ban-actions { display: flex; flex-direction: column; gap: 4px; min-width: 110px; }
+        .ban-actions .btn { border-radius: 50px; font-size: 12px; padding: 4px 10px; }
+        .badge-banned { background: #ff5252; color: #fff; border-radius: 50px; padding: 2px 8px; font-size: 10px; margin-left: 6px; }
     </style>
 </head>
 <body>
@@ -78,34 +88,25 @@
         </div>
     </div>
 
-    <!-- Kara Liste Paneli -->
-    <div id="banPanel" style="background:#111; border:1px solid #ff5252; border-radius:12px; padding:15px; margin-bottom:20px;">
-        <h6 style="color:#ff5252; font-weight:bold; margin-bottom:10px;">🚫 Kara Liste</h6>
-        <div class="d-flex flex-wrap gap-2 mb-2">
-            <select id="banKind" class="form-select bg-black text-info border-secondary" style="max-width:120px;">
-                <option value="ip">IP</option>
-                <option value="device">Cihaz</option>
-            </select>
-            <input type="text" id="banValue" class="form-control bg-black text-info border-secondary" placeholder="IP veya cihaz ID (logdan kopyala)" style="flex:1; min-width:180px;">
-            <select id="banDuration" class="form-select bg-black text-info border-secondary" style="max-width:150px;">
-                <option value="15">15 dakika</option>
-                <option value="60">1 saat</option>
-                <option value="1440">1 gün</option>
-                <option value="10080">7 gün</option>
-                <option value="43200">30 gün</option>
-                <option value="">Süresiz</option>
-            </select>
-            <input type="text" id="banReason" class="form-control bg-black text-info border-secondary" placeholder="Sebep (opsiyonel)" style="flex:1; min-width:150px;">
-            <button class="btn btn-danger fw-bold" style="border-radius:50px;" onclick="banUser()">Banla</button>
-        </div>
-        <div id="banListBox" style="font-size:13px;"></div>
-    </div>
-
     <div class="d-flex flex-wrap gap-2 mb-4">
         <button class="btn btn-success btn-custom" onclick="getLogs()">Soruları Getir / Yenile 🔄</button>
         <button class="btn btn-danger btn-custom" onclick="clearLogs()">Tüm Soruları Sunucudan Sil 🗑️</button>
         <button id="maintenanceBtn" class="btn btn-warning btn-custom" onclick="toggleMaintenance()">🛠️ Bakım Moduna Al</button>
         <button class="btn btn-secondary btn-custom" onclick="logout()">Çıkış Yap 🚪</button>
+    </div>
+
+    <!-- 🚫 KARA LİSTE PANELİ (EKLENTİ) -->
+    <div id="banPanel" style="background:#111; border:1px solid #ff5252; border-radius:12px; padding:15px; margin-bottom:20px;">
+        <h6 style="color:#ff5252; font-weight:bold; margin-bottom:10px;">🚫 Kara Liste Yönetimi</h6>
+
+        <div class="d-flex justify-content-between align-items-center mb-2">
+            <span style="color:#00e5ff; font-weight:bold; font-size:14px;">👥 Son Ziyaretçiler</span>
+            <button class="btn btn-sm btn-outline-info" style="border-radius:50px;" onclick="loadVisitors()">Yenile 🔄</button>
+        </div>
+        <div id="visitorListBox" style="font-size:13px; max-height:300px; overflow-y:auto; margin-bottom:20px;"></div>
+
+        <div style="color:#ff5252; font-weight:bold; font-size:14px; margin-bottom:8px;">⛔ Banlı Liste</div>
+        <div id="banListBox" style="font-size:13px;"></div>
     </div>
 
     <div class="log-display" id="logBox">
@@ -117,6 +118,7 @@
     const API_URL = 'https://aries-a5bl.onrender.com/api/get-logs';
     const ASK_URL = 'https://aries-a5bl.onrender.com/ask';
     const BAN_URL = 'https://aries-a5bl.onrender.com/api/banlist';
+    const VISITORS_URL = 'https://aries-a5bl.onrender.com/api/recent-visitors';
     const PASS = '4275';
     let isMaintenance = false;
 
@@ -126,7 +128,8 @@
             document.getElementById('dashboardSection').style.display = 'block';
             getLogs();
             checkStatus();
-            loadBanlist(); // Panel açıldığında ban listesini de yükle
+            loadVisitors();
+            loadBanlist();
         } else {
             alert('Hatalı şifre girdin.');
         }
@@ -243,76 +246,6 @@
         });
     }
 
-    // 🚫 Yeni Ban Sistemi Fonksiyonları
-    function loadBanlist() {
-        fetch(BAN_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ password: PASS, action: 'list' })
-        })
-        .then(res => res.json())
-        .then(data => {
-            const box = document.getElementById('banListBox');
-            box.innerHTML = '';
-            if (!data.success || !data.bans || Object.keys(data.bans).length === 0) {
-                box.innerText = 'Kara listede kimse yok.';
-                return;
-            }
-            Object.entries(data.bans).forEach(([key, b]) => {
-                const row = document.createElement('div');
-                row.className = 'd-flex justify-content-between align-items-center';
-                row.style.cssText = 'border-bottom:1px solid #222; padding:6px 0;';
-                const until = b.until ? new Date(b.until).toLocaleString('tr-TR') : 'Süresiz';
-                row.innerHTML = `<span>[${b.kind.toUpperCase()}] <b>${b.value}</b> — ${until} ${b.reason ? '— ' + b.reason : ''}</span>`;
-                const btn = document.createElement('button');
-                btn.className = 'btn btn-sm btn-outline-light';
-                btn.style.borderRadius = '50px';
-                btn.innerText = 'Kaldır';
-                btn.onclick = () => unbanUser(key);
-                row.appendChild(btn);
-                box.appendChild(row);
-            });
-        });
-    }
-
-    function banUser() {
-        const kind = document.getElementById('banKind').value;
-        const value = document.getElementById('banValue').value.trim();
-        const duration = document.getElementById('banDuration').value;
-        const reason = document.getElementById('banReason').value.trim();
-        if (!value) { alert('IP veya cihaz ID gir.'); return; }
-
-        fetch(BAN_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                password: PASS, action: 'ban', kind, value, reason,
-                duration_minutes: duration ? parseInt(duration) : null
-            })
-        })
-        .then(res => res.json())
-        .then(data => {
-            if (data.success) {
-                document.getElementById('banValue').value = '';
-                document.getElementById('banReason').value = '';
-                loadBanlist();
-            } else {
-                alert('Hata: ' + (data.message || 'bilinmeyen'));
-            }
-        });
-    }
-
-    function unbanUser(key) {
-        if (!confirm('Bu banı kaldırmak istediğine emin misin?')) return;
-        fetch(BAN_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ password: PASS, action: 'unban', key })
-        })
-        .then(res => res.json())
-        .then(() => loadBanlist());
-    }
-
     function toggleMaintenance() {
         const nextAction = isMaintenance ? 'resume' : 'maintenance';
         const confirmMsg = isMaintenance
@@ -352,6 +285,141 @@
                 alert('Tüm veri geçmişi sıfırlandı.');
                 getLogs();
             }
+        });
+    }
+
+    // --------------------------------------------------------------------
+    // 🚫 KARA LİSTE FONKSİYONLARI (EKLENTİ)
+    // --------------------------------------------------------------------
+
+    function loadVisitors() {
+        fetch(VISITORS_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ password: PASS })
+        })
+        .then(res => res.json())
+        .then(data => {
+            const box = document.getElementById('visitorListBox');
+            box.innerHTML = '';
+            if (!data.success || !data.visitors || data.visitors.length === 0) {
+                box.innerText = 'Henüz ziyaretçi kaydı yok.';
+                return;
+            }
+            data.visitors.forEach(v => {
+                const row = document.createElement('div');
+                row.className = 'ban-row';
+
+                const info = document.createElement('span');
+                info.className = 'info';
+                const shortDevice = v.device ? v.device.slice(0, 10) + '…' : '(cihaz yok)';
+                const bannedBadge = v.is_banned ? '<span class="badge-banned">BANLI</span>' : '';
+                info.innerHTML = `<b>${v.ip}</b> <span style="color:#888;">| ${shortDevice}</span>${bannedBadge}<br>
+                                   <span style="color:#666; font-size:11px;">${v.time} — "${v.question}"</span>`;
+                row.appendChild(info);
+
+                // 🔴 Yazının hemen sağında Banla butonları
+                const actions = document.createElement('div');
+                actions.className = 'ban-actions';
+
+                const banIpBtn = document.createElement('button');
+                banIpBtn.className = 'btn btn-danger';
+                banIpBtn.innerText = 'IP Banla';
+                banIpBtn.onclick = () => quickBan('ip', v.ip);
+                actions.appendChild(banIpBtn);
+
+                if (v.device) {
+                    const banDeviceBtn = document.createElement('button');
+                    banDeviceBtn.className = 'btn btn-outline-danger';
+                    banDeviceBtn.innerText = 'Cihaz Banla';
+                    banDeviceBtn.onclick = () => quickBan('device', v.device);
+                    actions.appendChild(banDeviceBtn);
+                }
+
+                row.appendChild(actions);
+                box.appendChild(row);
+            });
+        });
+    }
+
+    function quickBan(kind, value) {
+        const durationInput = prompt(
+            `${kind === 'ip' ? 'IP' : 'Cihaz'} banlanacak: ${value}\n\nSüre (dakika) gir, süresiz için boş bırak:`,
+            "1440"
+        );
+        if (durationInput === null) return; // iptal edildi
+
+        const reason = prompt('Sebep (opsiyonel):', '') || '';
+
+        fetch(BAN_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                password: PASS, action: 'ban', kind, value, reason,
+                duration_minutes: durationInput.trim() ? parseInt(durationInput.trim()) : null
+            })
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                alert('Banlandı ✅');
+                loadBanlist();
+                loadVisitors();
+            } else {
+                alert('Hata: ' + (data.message || 'bilinmeyen'));
+            }
+        });
+    }
+
+    function loadBanlist() {
+        fetch(BAN_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ password: PASS, action: 'list' })
+        })
+        .then(res => res.json())
+        .then(data => {
+            const box = document.getElementById('banListBox');
+            box.innerHTML = '';
+            if (!data.success || !data.bans || Object.keys(data.bans).length === 0) {
+                box.innerText = 'Kara listede kimse yok.';
+                return;
+            }
+            Object.entries(data.bans).forEach(([key, b]) => {
+                const row = document.createElement('div');
+                row.className = 'ban-row';
+                const until = b.until ? new Date(b.until).toLocaleString('tr-TR') : 'Süresiz';
+
+                const info = document.createElement('span');
+                info.className = 'info';
+                info.innerHTML = `[${b.kind.toUpperCase()}] <b>${b.value}</b> — ${until} ${b.reason ? '— ' + b.reason : ''}`;
+                row.appendChild(info);
+
+                // 🟢 Yazının hemen sağında Kaldır butonu
+                const btn = document.createElement('button');
+                btn.className = 'btn btn-outline-light';
+                btn.style.borderRadius = '50px';
+                btn.style.fontSize = '12px';
+                btn.innerText = 'Kaldır';
+                btn.onclick = () => unbanUser(key);
+                row.appendChild(btn);
+
+                box.appendChild(row);
+            });
+        });
+    }
+
+    function unbanUser(key) {
+        if (!confirm('Bu banı kaldırmak istediğine emin misin?')) return;
+        fetch(BAN_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ password: PASS, action: 'unban', key })
+        })
+        .then(res => res.json())
+        .then(() => {
+            loadBanlist();
+            loadVisitors();
         });
     }
 </script>
