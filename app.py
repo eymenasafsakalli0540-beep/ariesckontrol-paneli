@@ -17,7 +17,128 @@ try:
     TRANSLATOR_AVAILABLE = True
 except ImportError:
     TRANSLATOR_AVAILABLE = False
+# --------------------------------------------------------------------------
+# 🚫 KARA LİSTE / BANLAMA SİSTEMİ (EKLENTİ)
+# --------------------------------------------------------------------------
+BANLIST_FILE = "banlist.json"
+DEVICE_COOKIE_NAME = "aries_device_id"
 
+
+def _load_banlist():
+    if not os.path.exists(BANLIST_FILE):
+        return {}
+    try:
+        with open(BANLIST_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def _save_banlist(data):
+    with open(BANLIST_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+
+
+banlist = _load_banlist()  # { "ip:1.2.3.4": {...}, "device:uuid...": {...} }
+
+
+def _ban_key(kind, value):
+    return f"{kind}:{value}"
+
+
+def is_banned(ip, device_id):
+    now = datetime.now()
+    changed = False
+    result = None
+    for key in (_ban_key("ip", ip), _ban_key("device", device_id)):
+        entry = banlist.get(key)
+        if not entry:
+            continue
+        until = entry.get("until")
+        if until is None:
+            result = entry
+            continue
+        try:
+            if now < datetime.fromisoformat(until):
+                result = entry
+            else:
+                del banlist[key]  # süresi dolmuş, temizle
+                changed = True
+        except Exception:
+            continue
+    if changed:
+        _save_banlist(banlist)
+    return result
+
+
+@app.before_request
+def _ensure_device_id():
+    request.aries_device_id = request.cookies.get(DEVICE_COOKIE_NAME) or uuid.uuid4().hex
+
+
+@app.after_request
+def _set_device_cookie(response):
+    if request.cookies.get(DEVICE_COOKIE_NAME) != getattr(request, "aries_device_id", None):
+        response.set_cookie(
+            DEVICE_COOKIE_NAME, request.aries_device_id,
+            max_age=60 * 60 * 24 * 730, httponly=True, samesite="Lax"
+        )
+    return response
+
+
+@app.route('/api/banlist', methods=['POST', 'OPTIONS'])
+def manage_banlist():
+    cors_headers = {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type"
+    }
+    if request.method == 'OPTIONS':
+        return jsonify({"success": True}), 200, cors_headers
+
+    data = request.json or {}
+    if data.get('password') != "4275":
+        return jsonify({"success": False, "message": "Hatalı şifre!"}), 403, cors_headers
+
+    action = data.get('action', 'list')
+
+    if action == 'list':
+        return jsonify({"success": True, "bans": banlist}), 200, cors_headers
+
+    if action == 'ban':
+        kind = data.get('kind', 'ip')  # "ip" veya "device"
+        value = (data.get('value') or '').strip()
+        reason = data.get('reason', '').strip()
+        duration_minutes = data.get('duration_minutes')  # boş/None = süresiz
+        if not value:
+            return jsonify({"success": False, "message": "Değer boş olamaz."}), 400, cors_headers
+        until = None
+        if duration_minutes:
+            until = (datetime.now() + timedelta(minutes=int(duration_minutes))).isoformat()
+        banlist[_ban_key(kind, value)] = {
+            "kind": kind, "value": value, "reason": reason,
+            "until": until, "created_at": datetime.now().isoformat()
+        }
+        _save_banlist(banlist)
+        return jsonify({"success": True, "bans": banlist}), 200, cors_headers
+
+    if action == 'unban':
+        key = data.get('key')
+        if key in banlist:
+            del banlist[key]
+            _save_banlist(banlist)
+        return jsonify({"success": True, "bans": banlist}), 200, cors_headers
+
+    return jsonify({"success": False, "message": "Bilinmeyen işlem."}), 400, cors_headers
+
+
+@app.route('/api/whoami', methods=['GET'])
+def whoami():
+    # Panelden "beni banla" test etmek veya loglardaki cihaz id'sini doğrulamak için
+    return jsonify({
+        "ip": request.remote_addr,
+        "device_id": getattr(request, "aries_device_id", request.cookies.get(DEVICE_COOKIE_NAME))
+    })
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "aries-ai-cok-gizli-anahtar-2026")
@@ -1003,6 +1124,15 @@ def ask():
     # Böylece bakım sırasında geliştirmeleri canlıda test edebilirsin;
     # şifresiz/normal kullanıcı istekleri bakım mesajını almaya devam eder.
     is_admin_test = request.json.get("admin_password") == "4275"
+    
+        ban_entry = is_banned(request.remote_addr, getattr(request, "aries_device_id", None))
+    if ban_entry and not is_admin_test:
+        until = ban_entry.get("until")
+        if until:
+            msg = f"🚫 Erişiminiz {until[:16].replace('T',' ')} tarihine kadar engellenmiştir. Sebep: {ban_entry.get('reason') or 'belirtilmedi'}"
+        else:
+            msg = f"🚫 Erişiminiz süresiz olarak engellenmiştir. Sebep: {ban_entry.get('reason') or 'belirtilmedi'}"
+        return jsonify({"reply": msg, "banned": True}), 200, cors_headers
 
     # 🛠️ BAKIM MODU KONTROLÜ (EKLENTİ) — MAINTENANCE_MODE açıkken hiçbir motor
     # (çeviri, matematik, coğrafya, tarih, fen, AI fallback vb.) çalıştırılmaz;
@@ -1019,6 +1149,10 @@ def ask():
     def save_log(status_msg):
         with open("sorular.txt", "a", encoding="utf-8") as file:
             file.write(f"[{current_time}] IP: {user_ip} | DURUM: {status_msg} -> Soru: {raw_message}\n")
+                    def save_log(status_msg):
+        device_id = getattr(request, "aries_device_id", "")
+        with open("sorular.txt", "a", encoding="utf-8") as file:
+            file.write(f"[{current_time}] IP: {user_ip} | CIHAZ: {device_id} | DURUM: {status_msg} -> Soru: {raw_message}\n")
 
     # Noktalama temizliği
     user_message = re.sub(r'[.,\?!;\(\)"\'’\-]', '', user_message)
