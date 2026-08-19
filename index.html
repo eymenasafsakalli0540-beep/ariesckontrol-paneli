@@ -116,6 +116,7 @@
 <script>
     const API_URL = 'https://aries-a5bl.onrender.com/api/get-logs';
     const ASK_URL = 'https://aries-a5bl.onrender.com/ask';
+    const BAN_URL = 'https://aries-a5bl.onrender.com/api/banlist';
     const PASS = '4275';
     let isMaintenance = false;
 
@@ -125,6 +126,7 @@
             document.getElementById('dashboardSection').style.display = 'block';
             getLogs();
             checkStatus();
+            loadBanlist(); // Panel açıldığında ban listesini de yükle
         } else {
             alert('Hatalı şifre girdin.');
         }
@@ -241,43 +243,74 @@
         });
     }
 
-    // 🚫 Yeni eklenen Banlama Fonksiyonu
+    // 🚫 Yeni Ban Sistemi Fonksiyonları
+    function loadBanlist() {
+        fetch(BAN_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ password: PASS, action: 'list' })
+        })
+        .then(res => res.json())
+        .then(data => {
+            const box = document.getElementById('banListBox');
+            box.innerHTML = '';
+            if (!data.success || !data.bans || Object.keys(data.bans).length === 0) {
+                box.innerText = 'Kara listede kimse yok.';
+                return;
+            }
+            Object.entries(data.bans).forEach(([key, b]) => {
+                const row = document.createElement('div');
+                row.className = 'd-flex justify-content-between align-items-center';
+                row.style.cssText = 'border-bottom:1px solid #222; padding:6px 0;';
+                const until = b.until ? new Date(b.until).toLocaleString('tr-TR') : 'Süresiz';
+                row.innerHTML = `<span>[${b.kind.toUpperCase()}] <b>${b.value}</b> — ${until} ${b.reason ? '— ' + b.reason : ''}</span>`;
+                const btn = document.createElement('button');
+                btn.className = 'btn btn-sm btn-outline-light';
+                btn.style.borderRadius = '50px';
+                btn.innerText = 'Kaldır';
+                btn.onclick = () => unbanUser(key);
+                row.appendChild(btn);
+                box.appendChild(row);
+            });
+        });
+    }
+
     function banUser() {
         const kind = document.getElementById('banKind').value;
         const value = document.getElementById('banValue').value.trim();
         const duration = document.getElementById('banDuration').value;
         const reason = document.getElementById('banReason').value.trim();
+        if (!value) { alert('IP veya cihaz ID gir.'); return; }
 
-        if (!value) {
-            alert('Lütfen banlanacak IP veya cihaz ID değerini gir.');
-            return;
-        }
-
-        fetch(API_URL, {
+        fetch(BAN_URL, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-                password: PASS,
-                action: 'ban',
-                kind: kind,
-                value: value,
-                duration: duration,
-                reason: reason
+                password: PASS, action: 'ban', kind, value, reason,
+                duration_minutes: duration ? parseInt(duration) : null
             })
         })
         .then(res => res.json())
         .then(data => {
             if (data.success) {
-                alert('Başarıyla kara listeye eklendi.');
                 document.getElementById('banValue').value = '';
                 document.getElementById('banReason').value = '';
+                loadBanlist();
             } else {
-                alert('Banlama başarısız: ' + (data.error || 'Bilinmeyen hata'));
+                alert('Hata: ' + (data.message || 'bilinmeyen'));
             }
-        })
-        .catch(() => {
-            alert('Sunucuya ulaşılamadı.');
         });
+    }
+
+    function unbanUser(key) {
+        if (!confirm('Bu banı kaldırmak istediğine emin misin?')) return;
+        fetch(BAN_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ password: PASS, action: 'unban', key })
+        })
+        .then(res => res.json())
+        .then(() => loadBanlist());
     }
 
     function toggleMaintenance() {
