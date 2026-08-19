@@ -78,6 +78,29 @@
         </div>
     </div>
 
+    <!-- Kara Liste Paneli -->
+    <div id="banPanel" style="background:#111; border:1px solid #ff5252; border-radius:12px; padding:15px; margin-bottom:20px;">
+        <h6 style="color:#ff5252; font-weight:bold; margin-bottom:10px;">🚫 Kara Liste</h6>
+        <div class="d-flex flex-wrap gap-2 mb-2">
+            <select id="banKind" class="form-select bg-black text-info border-secondary" style="max-width:120px;">
+                <option value="ip">IP</option>
+                <option value="device">Cihaz</option>
+            </select>
+            <input type="text" id="banValue" class="form-control bg-black text-info border-secondary" placeholder="IP veya cihaz ID (logdan kopyala)" style="flex:1; min-width:180px;">
+            <select id="banDuration" class="form-select bg-black text-info border-secondary" style="max-width:150px;">
+                <option value="15">15 dakika</option>
+                <option value="60">1 saat</option>
+                <option value="1440">1 gün</option>
+                <option value="10080">7 gün</option>
+                <option value="43200">30 gün</option>
+                <option value="">Süresiz</option>
+            </select>
+            <input type="text" id="banReason" class="form-control bg-black text-info border-secondary" placeholder="Sebep (opsiyonel)" style="flex:1; min-width:150px;">
+            <button class="btn btn-danger fw-bold" style="border-radius:50px;" onclick="banUser()">Banla</button>
+        </div>
+        <div id="banListBox" style="font-size:13px;"></div>
+    </div>
+
     <div class="d-flex flex-wrap gap-2 mb-4">
         <button class="btn btn-success btn-custom" onclick="getLogs()">Soruları Getir / Yenile 🔄</button>
         <button class="btn btn-danger btn-custom" onclick="clearLogs()">Tüm Soruları Sunucudan Sil 🗑️</button>
@@ -150,7 +173,6 @@
         });
     }
 
-    // Sunucudaki bakım durumunu ayrıca kontrol etmek istersen (opsiyonel, get ile de gelebilir)
     function checkStatus() {
         fetch(API_URL, {
             method: 'POST',
@@ -186,7 +208,6 @@
         }
     }
 
-    // 🧪 Bakım sırasında test sohbeti — admin şifresiyle bakım bypass edilir
     function sendTestMessage() {
         const input = document.getElementById('testChatInput');
         const message = input.value.trim();
@@ -220,7 +241,45 @@
         });
     }
 
-    // Tek tuşla bakım moduna al / AI'yi tekrar aktif et
+    // 🚫 Yeni eklenen Banlama Fonksiyonu
+    function banUser() {
+        const kind = document.getElementById('banKind').value;
+        const value = document.getElementById('banValue').value.trim();
+        const duration = document.getElementById('banDuration').value;
+        const reason = document.getElementById('banReason').value.trim();
+
+        if (!value) {
+            alert('Lütfen banlanacak IP veya cihaz ID değerini gir.');
+            return;
+        }
+
+        fetch(API_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                password: PASS,
+                action: 'ban',
+                kind: kind,
+                value: value,
+                duration: duration,
+                reason: reason
+            })
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                alert('Başarıyla kara listeye eklendi.');
+                document.getElementById('banValue').value = '';
+                document.getElementById('banReason').value = '';
+            } else {
+                alert('Banlama başarısız: ' + (data.error || 'Bilinmeyen hata'));
+            }
+        })
+        .catch(() => {
+            alert('Sunucuya ulaşılamadı.');
+        });
+    }
+
     function toggleMaintenance() {
         const nextAction = isMaintenance ? 'resume' : 'maintenance';
         const confirmMsg = isMaintenance
