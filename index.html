@@ -163,19 +163,42 @@
                 if(data.logs.length === 0 || data.logs[0].includes("sorulmadı")) {
                     box.innerText = "Defteriniz şu an boş.";
                 } else {
-                    data.logs.forEach(line => {
-                        const div = document.createElement('div');
-                        div.style.padding = '5px 0';
-                        div.style.borderBottom = '1px solid #1a1a1a';
-                        div.innerHTML = line;
-                        box.appendChild(div);
-                    });
+                    data.logs.forEach(line => renderLogLine(line, box));
                 }
             }
         })
         .catch(err => {
             document.getElementById('logBox').innerText = 'Sunucuyla el sıkışılamadı. Render uykuda olabilir, azıcık bekleyip yenile.';
         });
+    }
+
+    // 🚫 Log satırını ayrıştırıp sağına "Banla" butonu ekleyen satır oluşturucu (EKLENTİ)
+    // Log formatı: [zaman] IP: x.x.x.x | CIHAZ: deviceid | DURUM: durum -> Soru: soru metni
+    const LOG_LINE_REGEX = /IP:\s*(\S+)\s*\|\s*CIHAZ:\s*(\S*)\s*\|/;
+
+    function renderLogLine(line, container) {
+        const row = document.createElement('div');
+        row.className = 'ban-row';
+
+        const textSpan = document.createElement('span');
+        textSpan.className = 'info';
+        textSpan.innerHTML = line;
+        row.appendChild(textSpan);
+
+        const match = line.match(LOG_LINE_REGEX);
+        if (match) {
+            const ip = match[1];
+            const device = match[2] || '';
+
+            const btn = document.createElement('button');
+            btn.className = 'btn btn-danger';
+            btn.style.cssText = 'border-radius:50px; font-size:12px; padding:4px 12px; white-space:nowrap; margin-left:10px;';
+            btn.innerText = 'Banla';
+            btn.onclick = () => quickBan(device ? 'device' : 'ip', device || ip);
+            row.appendChild(btn);
+        }
+
+        container.appendChild(row);
     }
 
     function checkStatus() {
