@@ -77,6 +77,30 @@
             white-space: nowrap;
             order: 2;
         }
+
+        /* 📊 İstatistik kartları (EKLENTİ) */
+        .stats-row { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 20px; }
+        .stat-card {
+            flex: 1; min-width: 130px; background: #111; border: 1px solid #222;
+            border-radius: 12px; padding: 12px 16px; text-align: center;
+        }
+        .stat-card .num { font-size: 24px; font-weight: bold; color: #00e5ff; }
+        .stat-card .lbl { font-size: 11px; color: #888; margin-top: 2px; }
+
+        /* 🔎 Arama / dışa aktarma / otomatik yenileme çubuğu */
+        .tools-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 12px; }
+        .tools-row input[type="text"] { border-radius: 50px !important; }
+        .switch-label { display: flex; align-items: center; gap: 6px; font-size: 13px; color: #ccc; user-select: none; cursor: pointer; }
+
+        /* 🎨 Log satırı durum renkleri */
+        .log-row.status-engellendi .log-text { color: #ff5252; }
+        .log-row.status-sakinlestirme .log-text { color: #ffb300; }
+        .log-row.status-cevaplandi .log-text { color: #e0e0e0; }
+
+        /* ➕ Manuel banlama formu */
+        .manual-ban-box { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; padding: 10px; background: #0b0b0b; border: 1px dashed #444; border-radius: 10px; }
+        .manual-ban-box input, .manual-ban-box select { border-radius: 50px; }
+        .ban-countdown { color: #ffb300; font-size: 11px; }
     </style>
 </head>
 <body>
@@ -99,6 +123,14 @@
 
     <div id="maintenanceBanner" class="maintenance-banner">🔧 Şu an bakım arasındayız. Aries tamamen durduruldu.</div>
 
+    <!-- 📊 İSTATİSTİK KARTLARI (EKLENTİ) -->
+    <div class="stats-row">
+        <div class="stat-card"><div class="num" id="statTotalQuestions">–</div><div class="lbl">TOPLAM SORU</div></div>
+        <div class="stat-card"><div class="num" id="statTodayQuestions">–</div><div class="lbl">BUGÜNKÜ SORU</div></div>
+        <div class="stat-card"><div class="num" id="statVisitors">–</div><div class="lbl">SON ZİYARETÇİ</div></div>
+        <div class="stat-card"><div class="num" id="statBans">–</div><div class="lbl">BANLI SAYISI</div></div>
+    </div>
+
     <div id="testChatBox" style="display:none; background:#111; border:1px solid #00e5ff; border-radius:12px; padding:15px; margin-bottom:20px;">
         <h6 style="color:#00e5ff; font-weight:bold; margin-bottom:10px;">🧪 Test Sohbeti (Bakım Sırasında Geliştirme Kontrolü)</h6>
         <p style="font-size:12px; color:#888; margin-bottom:10px;">Bu kutudan yazdığın mesajlar, bakım modunda olsa bile gerçek ARIES motoruna gider. Diğer kullanıcılar hâlâ bakım mesajı görür.</p>
@@ -116,9 +148,31 @@
         <button class="btn btn-secondary btn-custom" onclick="logout()">Çıkış Yap 🚪</button>
     </div>
 
+    <!-- 🔎 Arama / Dışa Aktar / Otomatik Yenile (EKLENTİ) -->
+    <div class="tools-row">
+        <input type="text" id="logSearchInput" class="form-control bg-black text-info border-secondary" style="max-width:260px;" placeholder="🔎 Sorularda ara..." oninput="filterLogs()">
+        <button class="btn btn-sm btn-outline-light" style="border-radius:50px;" onclick="exportLogs()">⬇️ Dışa Aktar (.txt)</button>
+        <label class="switch-label">
+            <input type="checkbox" id="autoRefreshToggle" onchange="toggleAutoRefresh()">
+            ⏱️ Otomatik Yenile (30sn)
+        </label>
+    </div>
+
     <!-- 🚫 KARA LİSTE PANELİ (EKLENTİ) -->
     <div id="banPanel" style="background:#111; border:1px solid #ff5252; border-radius:12px; padding:15px; margin-bottom:20px;">
         <h6 style="color:#ff5252; font-weight:bold; margin-bottom:10px;">🚫 Kara Liste Yönetimi</h6>
+
+        <!-- ➕ Manuel IP/Cihaz Banlama -->
+        <div class="manual-ban-box">
+            <select id="manualBanKind" class="form-select form-select-sm bg-black text-info border-secondary" style="max-width:110px;">
+                <option value="ip">IP</option>
+                <option value="device">Cihaz</option>
+            </select>
+            <input type="text" id="manualBanValue" class="form-control form-control-sm bg-black text-info border-secondary" style="max-width:160px;" placeholder="Değer (örn: 1.2.3.4)">
+            <input type="number" id="manualBanDuration" class="form-control form-control-sm bg-black text-info border-secondary" style="max-width:120px;" placeholder="Süre (dk, boş=süresiz)">
+            <input type="text" id="manualBanReason" class="form-control form-control-sm bg-black text-info border-secondary" style="max-width:160px;" placeholder="Sebep (opsiyonel)">
+            <button class="btn btn-sm btn-danger" style="border-radius:50px;" onclick="manualBan()">Banla ⛔</button>
+        </div>
 
         <div class="d-flex justify-content-between align-items-center mb-2">
             <span style="color:#00e5ff; font-weight:bold; font-size:14px;">👥 Son Ziyaretçiler</span>
@@ -145,6 +199,8 @@
     const VISITORS_URL = 'https://aries-a5bl.onrender.com/api/recent-visitors';
     const PASS = '4275';
     let isMaintenance = false;
+    let allLogs = [];
+    let autoRefreshTimer = null;
 
     function login() {
         if(document.getElementById('passInput').value === PASS) {
@@ -184,16 +240,66 @@
             const box = document.getElementById('logBox');
             box.innerHTML = '';
             if(data.success && data.logs) {
+                allLogs = data.logs;
                 if(data.logs.length === 0 || data.logs[0].includes("sorulmadı")) {
                     box.innerText = "Defteriniz şu an boş.";
                 } else {
                     data.logs.forEach(line => renderLogLine(line, box));
                 }
+                updateQuestionStats(data.logs);
             }
         })
         .catch(err => {
             document.getElementById('logBox').innerText = 'Sunucuyla el sıkışılamadı. Render uykuda olabilir, azıcık bekleyip yenile.';
         });
+    }
+
+    // 🔎 Arama kutusuna yazıldıkça log listesini filtreler (EKLENTİ)
+    function filterLogs() {
+        const query = document.getElementById('logSearchInput').value.trim().toLowerCase();
+        const box = document.getElementById('logBox');
+        box.innerHTML = '';
+        const filtered = query ? allLogs.filter(l => l.toLowerCase().includes(query)) : allLogs;
+        if (filtered.length === 0) {
+            box.innerText = query ? 'Aramanla eşleşen soru bulunamadı.' : 'Defteriniz şu an boş.';
+            return;
+        }
+        filtered.forEach(line => renderLogLine(line, box));
+    }
+
+    // ⬇️ Görüntülenen log listesini .txt olarak indirir (EKLENTİ)
+    function exportLogs() {
+        if (!allLogs || allLogs.length === 0) { alert('Dışa aktarılacak veri yok.'); return; }
+        const content = allLogs.join('\n');
+        const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `aries-loglar-${new Date().toISOString().slice(0,19).replace(/[:T]/g,'-')}.txt`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+    }
+
+    // ⏱️ 30 saniyede bir logları/ziyaretçileri/ban listesini otomatik yeniler (EKLENTİ)
+    function toggleAutoRefresh() {
+        const checked = document.getElementById('autoRefreshToggle').checked;
+        if (autoRefreshTimer) { clearInterval(autoRefreshTimer); autoRefreshTimer = null; }
+        if (checked) {
+            autoRefreshTimer = setInterval(() => {
+                getLogs(); loadVisitors(); loadBanlist();
+            }, 30000);
+        }
+    }
+
+    // 📊 Toplam / bugünkü soru sayısını günceller (EKLENTİ)
+    function updateQuestionStats(logs) {
+        const todayStr = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+        const total = (logs[0] && logs[0].includes("sorulmadı")) ? 0 : logs.length;
+        const today = logs.filter(l => l.includes(`[${todayStr}`)).length;
+        document.getElementById('statTotalQuestions').innerText = total;
+        document.getElementById('statTodayQuestions').innerText = today;
     }
 
     // 🚫 Log satırını ayrıştırıp sorunun HEMEN sağına "Banla" butonu ekleyen satır oluşturucu (EKLENTİ)
@@ -204,6 +310,11 @@
     function renderLogLine(line, container) {
         const row = document.createElement('div');
         row.className = 'log-row';
+
+        // 🎨 Duruma göre renklendirme (EKLENTİ)
+        if (line.includes('ENGELLENDI')) row.classList.add('status-engellendi');
+        else if (line.includes('SAKINLESTIRME')) row.classList.add('status-sakinlestirme');
+        else if (line.includes('CEVAPLANDI')) row.classList.add('status-cevaplandi');
 
         const textSpan = document.createElement('span');
         textSpan.className = 'log-text';
@@ -352,8 +463,10 @@
             box.innerHTML = '';
             if (!data.success || !data.visitors || data.visitors.length === 0) {
                 box.innerText = 'Henüz ziyaretçi kaydı yok.';
+                document.getElementById('statVisitors').innerText = '0';
                 return;
             }
+            document.getElementById('statVisitors').innerText = data.visitors.length;
             data.visitors.forEach(v => {
                 const row = document.createElement('div');
                 row.className = 'ban-row';
@@ -443,13 +556,29 @@
 
         const reason = prompt('Sebep (opsiyonel):', '') || '';
 
+        doBan(kind, value, reason, durationInput.trim() ? parseInt(durationInput.trim()) : null);
+    }
+
+    // ➕ Ziyaretçi listesinden bağımsız, elle IP/Cihaz banlama (EKLENTİ)
+    function manualBan() {
+        const kind = document.getElementById('manualBanKind').value;
+        const value = document.getElementById('manualBanValue').value.trim();
+        const reason = document.getElementById('manualBanReason').value.trim();
+        const durationRaw = document.getElementById('manualBanDuration').value.trim();
+        if (!value) { alert('Lütfen banlanacak IP veya cihaz değerini gir.'); return; }
+
+        doBan(kind, value, reason, durationRaw ? parseInt(durationRaw) : null, () => {
+            document.getElementById('manualBanValue').value = '';
+            document.getElementById('manualBanDuration').value = '';
+            document.getElementById('manualBanReason').value = '';
+        });
+    }
+
+    function doBan(kind, value, reason, durationMinutes, onSuccess) {
         fetch(BAN_URL, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                password: PASS, action: 'ban', kind, value, reason,
-                duration_minutes: durationInput.trim() ? parseInt(durationInput.trim()) : null
-            })
+            body: JSON.stringify({ password: PASS, action: 'ban', kind, value, reason, duration_minutes: durationMinutes })
         })
         .then(res => res.json())
         .then(data => {
@@ -457,10 +586,12 @@
                 alert('Banlandı ✅');
                 loadBanlist();
                 loadVisitors();
+                if (onSuccess) onSuccess();
             } else {
                 alert('Hata: ' + (data.message || 'bilinmeyen'));
             }
-        });
+        })
+        .catch(() => alert('Sunucuya ulaşılamadı.'));
     }
 
     function loadBanlist() {
@@ -475,16 +606,31 @@
             box.innerHTML = '';
             if (!data.success || !data.bans || Object.keys(data.bans).length === 0) {
                 box.innerText = 'Kara listede kimse yok.';
+                document.getElementById('statBans').innerText = '0';
                 return;
             }
+            document.getElementById('statBans').innerText = Object.keys(data.bans).length;
             Object.entries(data.bans).forEach(([key, b]) => {
                 const row = document.createElement('div');
                 row.className = 'ban-row';
                 const until = b.until ? new Date(b.until).toLocaleString('tr-TR') : 'Süresiz';
 
+                // ⏳ Kalan süre geri sayımı (EKLENTİ)
+                let countdown = '';
+                if (b.until) {
+                    const msLeft = new Date(b.until).getTime() - Date.now();
+                    if (msLeft > 0) {
+                        const mins = Math.floor(msLeft / 60000);
+                        const h = Math.floor(mins / 60), m = mins % 60;
+                        countdown = `<br><span class="ban-countdown">⏳ ${h > 0 ? h + 'sa ' : ''}${m}dk kaldı</span>`;
+                    } else {
+                        countdown = `<br><span class="ban-countdown">⏳ süresi doldu (yenilenmeyi bekliyor)</span>`;
+                    }
+                }
+
                 const info = document.createElement('span');
                 info.className = 'info';
-                info.innerHTML = `[${b.kind.toUpperCase()}] <b>${b.value}</b> — ${until} ${b.reason ? '— ' + b.reason : ''}`;
+                info.innerHTML = `[${b.kind.toUpperCase()}] <b>${b.value}</b> — ${until} ${b.reason ? '— ' + b.reason : ''}${countdown}`;
                 row.appendChild(info);
 
                 // 🟢 Yazının hemen sağında Kaldır butonu
