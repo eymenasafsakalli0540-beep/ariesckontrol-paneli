@@ -62,17 +62,20 @@
             display: flex;
             flex-wrap: wrap;
             align-items: center;
-            gap: 8px;
+            justify-content: flex-start;
+            column-gap: 10px;
+            row-gap: 4px;
             padding: 6px 0;
             border-bottom: 1px solid #1a1a1a;
         }
-        .log-row .log-text { flex: 0 1 auto; }
+        .log-row .log-text { flex: 0 1 auto; margin-right: 0; }
         .log-row .btn-banla {
             flex: 0 0 auto;
             border-radius: 50px;
             font-size: 11px;
             padding: 2px 10px;
             white-space: nowrap;
+            order: 2;
         }
     </style>
 </head>
@@ -191,8 +194,9 @@
     }
 
     // 🚫 Log satırını ayrıştırıp sorunun HEMEN sağına "Banla" butonu ekleyen satır oluşturucu (EKLENTİ)
-    // Log formatı: [zaman] IP: x.x.x.x | CIHAZ: deviceid | DURUM: durum -> Soru: soru metni
-    const LOG_LINE_REGEX = /IP:\s*(\S+)\s*\|\s*CIHAZ:\s*(\S*)\s*\|/;
+    // Log formatı: [zaman] IP: x.x.x.x | DURUM: durum -> Soru: soru metni  (CIHAZ alanı bazen olmayabilir)
+    const LOG_LINE_IP_REGEX = /IP:\s*(\S+)/;
+    const LOG_LINE_DEVICE_REGEX = /CIHAZ:\s*(\S+)/;
 
     function renderLogLine(line, container) {
         const row = document.createElement('div');
@@ -203,10 +207,11 @@
         textSpan.innerHTML = line;
         row.appendChild(textSpan);
 
-        const match = line.match(LOG_LINE_REGEX);
-        if (match) {
-            const ip = match[1];
-            const device = match[2] || '';
+        const ipMatch = line.match(LOG_LINE_IP_REGEX);
+        if (ipMatch) {
+            const ip = ipMatch[1];
+            const deviceMatch = line.match(LOG_LINE_DEVICE_REGEX);
+            const device = (deviceMatch && deviceMatch[1] !== '-') ? deviceMatch[1] : '';
 
             const btn = document.createElement('button');
             btn.className = 'btn btn-danger btn-banla';
